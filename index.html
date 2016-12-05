@@ -1,0 +1,264 @@
+<html>
+
+<head>
+    <title>
+
+    </title>
+    <style>
+        canvas {
+            display: block;
+            margin: auto;
+            margin-bottom: 20px;
+            border: 1px solid black;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <button onclick="spectrum();">Spectrum</button>
+    <button onclick="clearCanvas();">Clear canvas</button>
+    <button onclick="add();">Add</button>
+    <input type="text" placeholder="Enter letter" id="letter">
+    <button onclick="goNet();">Train</button>
+    <button onclick="recognize();">Recognize</button>
+    <div id="info"></div>
+    
+    <canvas id="canvas"></canvas>
+    <canvas id="spectrumCanvas"></canvas>
+    <script src="neuralNetwork.js"></script>
+</body>
+<script>
+    var canvas = document.getElementById('canvas'),
+        size;
+    canvas.width = canvas.height = size = 64;
+    var ctx = canvas.getContext('2d');
+
+    var spectrumCanvas = document.getElementById('spectrumCanvas');
+    spectrumCanvas.width = 800;
+    spectrumCanvas.height = 400;
+    var spectrumCtx = spectrumCanvas.getContext('2d');
+
+    var pressed = false;
+
+    canvas.onmousedown = function() {
+        ctx.fillStyle = 'blue';
+        pressed = true;
+    }
+
+    canvas.onmouseup = function() {
+        pressed = false;
+    }
+
+    canvas.onmousemove = function(event) {
+        if (pressed) {
+            var coord = getCoordinates(event);
+            ctx.beginPath();
+            ctx.arc(coord.x, coord.y, 2, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
+    function getCoordinates(event) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top
+        }
+    }
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function spectrum() {
+        var signal = [];
+        for (var i = 0; i < 64; i++) {
+            for (var j = 0; j < 64; j++) {
+                var imgData = ctx.getImageData(i, j, 1, 1);
+                var red = imgData.data[0];
+                var green = imgData.data[1];
+                var blue = imgData.data[2];
+
+                var value = (red + green + blue) / 3;
+                signal.push(value);
+            }
+        }
+
+        var N = signal.length,
+            maxValue = 0,
+            minValue = 0;
+        var spectrum = [];
+
+        for (var k = 0; k < N; k++) {
+            var real = 0,
+                img = 0;
+
+            for (var n = 0; n < N; n++) {
+                real += signal[n] * Math.cos((-2 * Math.PI * k * n) / N)
+                img += signal[n] * Math.sin((-2 * Math.PI * k * n) / N);
+            }
+            var value = Math.sqrt(real * real + img * img);
+            if (value > maxValue) {
+                maxValue = value;
+            }
+
+            if (value < minValue) {
+                minValue = value;
+            }
+
+            spectrum.push(value);
+        }
+
+        for (var i = 0; i < spectrum.length; i++) {
+            spectrum[i] = scaleBetween(spectrum[i], 0, 10, minValue, maxValue);
+        }
+        spectrum.splice(spectrum.length / 2);
+
+        spectrumCtx.clearRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+        spectrumCtx.strokeStyle = 'blue';
+        spectrumCtx.lineWidth = 2;
+        var step = spectrumCanvas.width / spectrum.length;
+        for (var x = 0, cnt = 10; cnt < spectrum.length; x += step, cnt++) {
+            spectrumCtx.beginPath();
+            spectrumCtx.moveTo(x, 300);
+            spectrumCtx.lineTo(x, 300 - spectrum[cnt] * 30);
+            spectrumCtx.closePath();
+            spectrumCtx.stroke();
+        }
+        
+        return spectrum;
+    }
+
+    function scaleBetween(unscaledNum, minAllowed, maxAllowed, min, max) {
+        return (maxAllowed - minAllowed) * (unscaledNum - min) / (max - min) + minAllowed;
+    }
+
+    function getArrayByLetter(letter) {
+        switch (letter) {
+            case 'А':
+                {
+                    return [0, 0, 0];
+                }
+            case 'И':
+                {
+                    return [0, 0, 1];
+                }
+            case 'Е':
+                {
+                    return [0, 1, 0];
+                }
+            case 'О':
+                {
+                    return [0, 1, 1];
+                }
+            case 'У':
+                {
+                    return [1, 0, 0];
+                }
+            case 'Ы':
+                {
+                    return [1, 0, 1];
+                }
+            case 'Ю':
+                {
+                    return [1, 1, 0];
+                }
+            case 'Э':
+                {
+                    return [1, 1, 1];
+                }
+            default:
+                {
+                    return [0, 0, 0];
+                }
+        }
+    }
+
+    function getLetterByArray(arr) {
+        if (arr[0] == 0) {
+            if (arr[1] == 0) {
+                if (arr[2] == 0) {
+                    return 'А';
+
+                } else {
+                    return 'И';
+                }
+            } else {
+                if (arr[2] == 0) {
+                    return 'Е';
+                } else {
+                    return 'О';
+                }
+            }
+        } else {
+            if (arr[1] == 0) {
+                if (arr[2] == 0) {
+                    return 'У';
+                } else {
+                    return 'Ы';
+                }
+            } else {
+                if (arr[2] == 0) {
+                    return 'Ю';
+                } else {
+                    return 'Э';
+                }
+            }
+        }
+    }
+    
+    var patterns = [];
+    var answers = [];
+    var net = new Net(512, 8, 3);
+    net.init();
+    
+    function add() {
+        var letter = document.getElementById('letter').value;
+        document.getElementById('letter').value = '';
+
+        var arr = spectrum();
+        arr.splice(arr.length / 4);
+        
+        if (letter == '' || arr.length == 0) {
+            alert('Not enought data!');
+
+        } else {
+            patterns.push(arr);
+            answers.push(getArrayByLetter(letter));
+
+            document.getElementById('info').innerHTML += arr.length + ' ' + letter + ' ' + '<br>';
+        }
+    }
+    
+    function goNet() {
+        console.log(patterns);
+        console.log(answers);
+
+        net.loadPatternsAndAnswers(patterns, answers);
+        net.study();
+
+        document.getElementById('info').innerHTML = '';
+        patterns = [];
+        answers = [];
+    }
+
+    function get512(arr) {
+        return arr.splice(arr.length/8);
+    }
+    
+    function recognize() {
+        var arr = spectrum();
+        arr.splice(arr.length / 4);
+        net.setEnters(arr);
+        net.countOut();
+        net.printOut();
+
+        var out = net.getBinaryResult();
+        console.log(getLetterByArray(out));
+    }
+    
+</script>
+
+</html>
